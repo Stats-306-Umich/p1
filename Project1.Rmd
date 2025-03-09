@@ -1,6 +1,6 @@
 ---
 title: "Project 1"
-author: "GROUP MEMBERS"
+author: "Shaurya Singh, Hania Timek, Aden Tao "
 output: html_document
 ---
 
