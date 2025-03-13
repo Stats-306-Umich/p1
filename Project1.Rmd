@@ -29,10 +29,21 @@ Aden
 
 * Load two files. To work in the console, use the `Session -> Set Working Directory -> To Source File Location`.
     * Call the first table `daily`: "./data/natural_gas_germany_daily.csv"
-    * Call the second table `gas`: "./data/dutch_ttf_natural_gas.csv". Be sure to properly import the `Date` column.
-    * Demonstrate that these have been loaded by showing the number of rows and columns in each table.
+```{r}
+daily <- read_csv("./data/natural_gas_germany_daily.csv")
+```
   
+    * Call the second table `gas`: "./data/dutch_ttf_natural_gas.csv". Be sure to properly import the `Date` column.
+```{r}
+gas <- read_csv("./data/dutch_ttf_natural_gas.csv", col_types = cols(Date = col_date(format = "%Y-%m-%d")))
+```
+    
+    * Demonstrate that these have been loaded by showing the number of rows and columns in each table.
+```{r}
+dim(daily)
+dim(gas)
 
+```
 ### Task 2
 
 Aden
@@ -100,6 +111,57 @@ Hania
     * A plot that shows seasonal effects before the crisis (September 2021 until October 2022)
     
 
+```{r o1f1, echo = TRUE}
+# Marginal distribution
+daily %>%
+  ggplot(aes(x = consumption_power)) +
+  geom_density()
+```
+From the marginal distribution of the consumption power variable, we can see that the distribution is right-skewed. This means that the majority of the data points are concentrated on the lower end of the consumption power scale. 
+
+```{r}
+# Joint distribution
+daily %>%
+  ggplot(aes(x = temperature, y = consumption_power)) +
+  geom_point()
+```
+From the joint distibution of the consumption power and temperature, we can see that there is a negative correlation between the two variables. This means that as the temperature increases, the consumption power decreases. 
+
+```{r}
+# Conditional mean
+daily %>%
+  group_by(weekday) %>%
+  summarise(mean_power = mean(consumption_power)) %>%
+  ggplot(aes(x = weekday, y = mean_power)) +
+  geom_point()
+```
+From the conditional mean plot, we can see that the consumption power is highest on the weekends and lowest on the weekdays. This is likely due to the increased use of electricity on the weekends when people are home. 
+
+```{r}
+# Facet wrap
+daily %>%
+  group_by(christmas_period) %>%
+  ggplot(aes(x = consumption_power)) +
+  geom_boxplot() +
+facet_wrap(~christmas_period, labeller = label_both)
+```
+From the facet wrap plot, we can see that the consumption power is lower during the Christmas period than during the rest of the year. This is likely due to the fact that people are away from home during the Christmas period.
+
+```{r}
+# A plot that shows seasonal effects before the crisis (September 2021 until October 2022)
+
+daily %>%
+  filter(date < "2021-09-01") %>%
+  group_by(month) %>%
+  summarise(mean_power = mean(consumption_power)) %>%
+  ggplot(aes(x = month, y = mean_power)) +
+geom_point() +
+coord_polar()
+  
+
+```
+From the plot of the seasonal effects on the consumption power, it is clear that the consumption power is highest in the summer months and lowest in the winter months. This is likely due to the increased use of air conditioning in the summer months.
+
 ### Objective 2
 
 Shaurya
@@ -125,6 +187,19 @@ Hania
 
 * Investigate solar radiation's marginal distribution and also it's relationship with temperature.
 
+```{r}
+daily %>%
+  ggplot(aes(x = solar_radiation)) +
+  geom_density()
+
+daily %>%
+  ggplot(aes(x = temperature, y = solar_radiation)) +
+  geom_point() +
+  geom_smooth()
+
+```
+
+From the marginal distribution of solar radiation, we can see that the distribution is right-skewed. This means that the majority of the data points are concentrated on the lower end of the solar radiation scale, but that there are some values that are also very high. From the joint distribution of solar radiation and temperature, we can see that there is a positive correlation between the two variables. This means that as the temperature increases, the solar radiation also increases. This is likely due to the fact that the sun is hotter in the summer months, which leads to higher temperatures and more solar radiation.
 
 ### Objective 5
 
@@ -132,11 +207,23 @@ Hania
 
 * Use `group_by` to summarize by a new feature of this data set not otherwise discussed in the tasks or objectives. What have you learned with these investigation?
 
+```{r}
+daily %>% 
+  group_by(holiday) %>% 
+  summarise(stdev = sd(wages)) %>% 
+  ggplot(aes(x = weekday, y = mean_wage)) + 
+  geom_point() +
+  facet_wrap(~holiday, labeller = label_both)
+```
+
 ### Objective 6
 
 Hania
 
 * Based on your exploration of the data, suggest three questions that could be asked from these data or additional data that you can imagine. Be sure to explain why the previous plots or calculations indicates that this would be an interesting our useful exploration.
+
+One question I could ask based on my exploration of the data is how the consumption power changes over time. From the plots I have created, I can see that the consumption power is highest in the summer months and lowest in the winter months. This is likely due to the increased use of air conditioning in the summer months. However, I am curious how this changed over the course of history in this dataset. Another question I could ask is how the consumption power changes with the temperature. From the joint distribution of the consumption power and temperature, I can see that there is a negative correlation between the two variables. This means that as the temperature increases, the consumption power decreases. However, I could investigate how this relationship varies according to the presence of holidays or not. Finally, I could ask how the consumption power changes with the solar radiation. From the joint distribution of the consumption power and solar radiation, I can see that there is a positive correlation between the two variables. This means that as the solar radiation increases, the consumption power also increases. So, a question I could ask is the exact amount by which on average solar radiation differs by month. 
+
 
 ### Objective 7
 
