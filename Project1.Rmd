@@ -29,20 +29,17 @@ Aden
 
 * Load two files. To work in the console, use the `Session -> Set Working Directory -> To Source File Location`.
     * Call the first table `daily`: "./data/natural_gas_germany_daily.csv"
+    * Call the second table `gas`: "./data/dutch_ttf_natural_gas.csv". Be sure to properly import the `Date` column.
+    * Demonstrate that these have been loaded by showing the number of rows and columns in each table.
+    
 ```{r}
 daily <- read_csv("./data/natural_gas_germany_daily.csv")
+gas <- read_csv("./data/dutch_ttf_natural_gas.csv", col_types = cols(Date = col_date()))
 ```
-  
-    * Call the second table `gas`: "./data/dutch_ttf_natural_gas.csv". Be sure to properly import the `Date` column.
-```{r}
-gas <- read_csv("./data/dutch_ttf_natural_gas.csv", col_types = cols(Date = col_date(format = "%Y-%m-%d")))
-```
-    
-    * Demonstrate that these have been loaded by showing the number of rows and columns in each table.
+
 ```{r}
 dim(daily)
 dim(gas)
-
 ```
 ### Task 2
 
@@ -50,17 +47,81 @@ Aden
 
 * The data in `daily` are collected over days, with information on different types of natural gas consumption (`consumption_small`, `consumption_industry`, `consumption_power`). Provide summaries of typical values for each of these three types of consumption.
 
+```{r}
+daily_summary <- daily %>%
+  summarise(across(c(consumption_small, consumption_industry, consumption_power),
+            list(mean = ~mean(., na.rm = TRUE),
+                 sd = ~sd(., na.rm = TRUE),
+                 min = ~min(., na.rm = TRUE),
+                 median = ~median(., na.rm = TRUE),
+                 max = ~max(., na.rm = TRUE))))
+daily_summary
+```
 
 ### Task 3
 
 Aden
 Answer some questions about the data in `daily`:
 
+```{r}
+colnames(daily)
+colnames(gas)
+```
+
 * How many weeks do the data cover?
+
+```{r}
+date_range <- range(daily$date)
+weeks <- as.numeric(difftime(date_range[2], date_range[1], units = "weeks"))
+cat("Num of weeks:", round(weeks, 1), "\n")
+```
+
 * What is the percentage change in the `consumption_*` variables (that is the last day minus the first day divided by the first day)?
+
+```{r}
+first_non_na <- daily %>% 
+  filter(!is.na(consumption_small)) %>% 
+  slice(1) %>% 
+  pull(consumption_small)
+
+last_non_na <- daily %>% 
+  filter(!is.na(consumption_small)) %>% 
+  slice(n()) %>% 
+  pull(consumption_small)
+
+percentage_change_small <- round((last_non_na - first_non_na) / first_non_na * 100, 1)
+
+cat("Percentage change (consumption small):", percentage_change_small, "%\n")
+```
+
+```{r}
+first_day <- daily %>% slice(1)
+last_day <- daily %>% slice(n())
+percentage_change <- function(x, y) round((y - x)/x * 100, 1)
+cat("Percentage change:\n",
+    "consumption_industry:", percentage_change(first_day$consumption_industry, last_day$consumption_industry), "%\n",
+    "consumption_power:", percentage_change(first_day$consumption_power, last_day$consumption_power), "%\n")
+```
+
 * What proportion of the days are marked as holidays?
+
+```{r}
+cat("Holidays Proportion:", mean(daily$holiday), "\n")
+```
+
 * For each month in each year, what was the year-month combination with the lowest median `consumption_power` value?
-   
+
+```{r}
+lowest_consumption_power <- daily %>%
+  mutate(year = year(date), month = month(date)) %>%
+  group_by(year, month) %>%
+  summarise(median_power = median(consumption_power, na.rm = TRUE)) %>%
+  ungroup() %>%
+  slice_min(median_power, n = 1)
+
+lowest_consumption_power
+```
+
 ### Task 4
 
 Aden
@@ -69,13 +130,132 @@ Aden
 ![Original consumption by month graph](proj1fig1.png)<br/>
 Produce plots that show the same information that is presented in this plot. Your plots do not have to have the same colors or markings, but we should be able to use them to compare the trends for the three price variables. 
 
+```{r}
+gas_monthly <- gas %>%
+  mutate(year_month = floor_date(Date, "month")) %>%
+  group_by(year_month) %>%
+  summarise(
+    "Natural gas price TTF" = mean(Price, na.rm = TRUE)
+  )
+
+daily_monthly <- daily %>%
+  mutate(year_month = floor_date(date, "month")) %>%
+  group_by(year_month) %>%
+  summarise(
+    "Industry Index (2015=100)" = mean(price_industry_idx, na.rm = TRUE),
+    "Household Index (2015=100)" = mean(price_households_idx, na.rm = TRUE)
+  )
+
+combined <- gas_monthly %>%
+  full_join(daily_monthly, by = "year_month") %>%
+  pivot_longer(
+    cols = -year_month,
+    names_to = "category",
+    values_to = "value"
+  )
+
+max_ttf <- max(combined$value[combined$category == "Natural gas price TTF"], na.rm = TRUE)
+max_index <- max(combined$value[combined$category != "Natural gas price TTF"], na.rm = TRUE)
+scale_factor <- max_ttf / max_index
+
+line_colors <- c(
+  "Natural gas price TTF" = "red",
+  "Industry Index (2015=100)" = "blue",
+  "Household Index (2015=100)" = "green"
+)
+
+linetypes <- c(
+  "Natural gas price TTF" = "solid",
+  "Industry Index (2015=100)" = "longdash",
+  "Household Index (2015=100)" = "dotdash"
+)
+
+ggplot(combined, aes(x = year_month, y = value, 
+                    color = category, linetype = category)) +
+  geom_line(linewidth = 0.8) +
+  coord_cartesian(
+    xlim = c(as.Date("2019-01-01"), as.Date("2022-12-31"))
+  ) +
+  scale_y_continuous(
+    name = "Price Indices (2015 = 100)",
+    limits = c(0, 1500),
+    sec.axis = sec_axis(
+      ~ . * scale_factor,
+      name = "Natural gas price TTF (€ MWh⁻¹)",
+      breaks = seq(0, 375, 25)
+    )
+  ) +
+  scale_x_date(
+    name = NULL,
+    date_breaks = "3 months",
+    date_labels = "%b\n%Y",
+    expand = expansion(mult = c(0.02, 0.02))
+  ) +
+  
+  scale_color_manual(values = line_colors) +
+  scale_linetype_manual(values = linetypes) +
+  ggtitle("Natural Gas Price Monthly Trends") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.key.width = unit(2.5, "cm"),
+    legend.spacing.x = unit(1, "cm"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major = element_line(color = "grey"),
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.margin = margin(t=20, r=20, b=20, l=20)
+  ) +
+  theme(
+    plot.margin = margin(t=20, r=20, b=30, l=20),
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+  )
+```
+
 ### Task 5
 
 Aden
 
 * Write a predicate function that returns true if any value in vector is missing. Use this function to find columns with missing values in the `daily` column. Create a plot or table that shows how often patterns of missingness occur: are all of the missing values in the same rows or are the various columns missing data in different ways?
 
+```{r}
+has_any_na <- function(x) any(is.na(x))
 
+cols_missing <- daily %>% summarise(across(everything(), has_any_na)) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "missing") %>%
+  filter(missing)
+
+cat("Missing value columns:", cols_missing$column, "\n")
+
+#table
+
+missing_data <- daily %>%
+  select(cols_missing$column) %>%
+  mutate(across(everything(), is.na))
+
+missing_patterns <- missing_data %>%
+  group_by(across(everything())) %>%
+  count()
+
+missing_patterns
+
+#plot
+
+missing_data_long <- missing_data %>%
+  mutate(row = row_number()) %>%
+  pivot_longer(-row, names_to = "column", values_to = "missing")
+
+ggplot(missing_data_long, aes(x = column, y = row, fill = missing)) +
+  geom_tile() +
+  scale_fill_manual(values = c("TRUE" = "green", "FALSE" = "red")) +
+  labs(title = "Missing Values by Row & Column", x = "Column", y = "Row") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.margin = margin(t = 10, r = 10, b = 30, l = 10),
+    axis.title.x = element_text(margin = margin(t = 15))
+  )
+```
 
 ### Task 6
 
