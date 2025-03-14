@@ -1,13 +1,16 @@
 ---
 title: "Project 1"
-author: "Shaurya Singh, Hania Timek, Aden Tao "
-output: html_document
+author: 'Shaurya Singh, Hania Timek, Aden Tao '
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(lubridate)
+library(tinytex)
 ```
 
 ## Overview
@@ -25,7 +28,6 @@ Your job in this project falls into two categories:
 
 ### Task 1
 
-Aden 
 
 * Load two files. To work in the console, use the `Session -> Set Working Directory -> To Source File Location`.
     * Call the first table `daily`: "./data/natural_gas_germany_daily.csv"
@@ -33,8 +35,23 @@ Aden
     * Demonstrate that these have been loaded by showing the number of rows and columns in each table.
     
 ```{r}
+library(readr)
+library(lubridate)
+
 daily <- read_csv("./data/natural_gas_germany_daily.csv")
-gas <- read_csv("./data/dutch_ttf_natural_gas.csv", col_types = cols(Date = col_date()))
+gas <- read_csv("./data/dutch_ttf_natural_gas.csv") %>%
+  mutate(Date = mdy(Date))   # mm/dd/yyyy format
+
+#gas <- read_csv("./data/dutch_ttf_natural_gas.csv", col_types = cols(
+ # Date = col_date("%m/%d/%Y"),
+  #Price = col_double(),
+  #Open = col_double(),
+  #High = col_double(),
+  #Low = col_double(),
+ # `Vol.` = col_character(),
+#  `Change %` = col_character()
+#))
+#gas <- read_csv("./data/dutch_ttf_natural_gas.csv", col_types = cols(Date = col_date()))
 ```
 
 ```{r}
@@ -43,7 +60,6 @@ dim(gas)
 ```
 ### Task 2
 
-Aden
 
 * The data in `daily` are collected over days, with information on different types of natural gas consumption (`consumption_small`, `consumption_industry`, `consumption_power`). Provide summaries of typical values for each of these three types of consumption.
 
@@ -60,7 +76,6 @@ daily_summary
 
 ### Task 3
 
-Aden
 Answer some questions about the data in `daily`:
 
 ```{r}
@@ -131,35 +146,29 @@ Aden
 Produce plots that show the same information that is presented in this plot. Your plots do not have to have the same colors or markings, but we should be able to use them to compare the trends for the three price variables. 
 
 ```{r}
-gas_monthly <- gas %>%
+gas_plot_data <- gas %>%
   mutate(year_month = floor_date(Date, "month")) %>%
+  filter(year_month >= "2019-01-01", year_month <= "2022-12-31") %>%
   group_by(year_month) %>%
-  summarise(
-    "Natural gas price TTF" = mean(Price, na.rm = TRUE)
-  )
-
-daily_monthly <- daily %>%
+  summarise(value = mean(Price, na.rm = TRUE)) %>%
+  mutate(category = "Natural gas price TTF")
+daily_plot_data <- daily %>%
   mutate(year_month = floor_date(date, "month")) %>%
-  group_by(year_month) %>%
-  summarise(
-    "Industry Index (2015=100)" = mean(price_industry_idx, na.rm = TRUE),
-    "Household Index (2015=100)" = mean(price_households_idx, na.rm = TRUE)
-  )
-
-combined <- gas_monthly %>%
-  full_join(daily_monthly, by = "year_month") %>%
+  filter(year_month >= "2019-01-01", year_month <= "2022-12-31") %>%
   pivot_longer(
-    cols = -year_month,
+    cols = c(price_industry_idx, price_households_idx),
     names_to = "category",
     values_to = "value"
+  ) %>%
+  mutate(
+    category = case_when(
+      category == "price_industry_idx" ~ "Industry Index (2015=100)",
+      category == "price_households_idx" ~ "Household Index (2015=100)"
+    ),
+    value_scaled = value / 4
   )
-
-max_ttf <- max(combined$value[combined$category == "Natural gas price TTF"], na.rm = TRUE)
-max_index <- max(combined$value[combined$category != "Natural gas price TTF"], na.rm = TRUE)
-scale_factor <- max_ttf / max_index
-
 line_colors <- c(
-  "Natural gas price TTF" = "red",
+  "Natural gas price TTF" = "black",
   "Industry Index (2015=100)" = "blue",
   "Household Index (2015=100)" = "green"
 )
@@ -169,54 +178,53 @@ linetypes <- c(
   "Industry Index (2015=100)" = "longdash",
   "Household Index (2015=100)" = "dotdash"
 )
-
-ggplot(combined, aes(x = year_month, y = value, 
-                    color = category, linetype = category)) +
-  geom_line(linewidth = 0.8) +
-  coord_cartesian(
-    xlim = c(as.Date("2019-01-01"), as.Date("2022-12-31"))
+ggplot() +
+  geom_line(
+    data = gas_plot_data,
+    aes(x = year_month, y = value, color = category, linetype = category),
+    linewidth = 0.8
+  ) +
+  geom_line(
+    data = daily_plot_data,
+    aes(x = year_month, y = value_scaled, color = category, linetype = category),
+    linewidth = 0.8
   ) +
   scale_y_continuous(
-    name = "Price Indices (2015 = 100)",
-    limits = c(0, 1500),
+    name = "Natural gas price TTF",
+    limits = c(0, 375),
+    breaks = seq(0, 375, 25),
     sec.axis = sec_axis(
-      ~ . * scale_factor,
-      name = "Natural gas price TTF (€ MWh⁻¹)",
-      breaks = seq(0, 375, 25)
+      ~ . * 4,
+      name = "Natural gas Price Indices (2015 = 100)",
+      breaks = seq(0, 1500, 250)
     )
   ) +
   scale_x_date(
     name = NULL,
     date_breaks = "3 months",
     date_labels = "%b\n%Y",
-    expand = expansion(mult = c(0.02, 0.02))
+    expand = expansion(mult = 0.00)
   ) +
-  
   scale_color_manual(values = line_colors) +
   scale_linetype_manual(values = linetypes) +
-  ggtitle("Natural Gas Price Monthly Trends") +
+  coord_cartesian(xlim = c(as.Date("2019-01-01"), as.Date("2022-12-31"))) +
   theme_minimal(base_size = 12) +
   theme(
     legend.position = "top",
     legend.title = element_blank(),
     legend.key.width = unit(2.5, "cm"),
-    legend.spacing.x = unit(1, "cm"),
     axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.major = element_line(color = "grey"),
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
-    plot.margin = margin(t=20, r=20, b=20, l=20)
+    panel.grid.major = element_line(color = "grey")
   ) +
-  theme(
-    plot.margin = margin(t=20, r=20, b=30, l=20),
-    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
-  )
+  labs(title = "Date")
 ```
 
 ### Task 5
 
-Aden
 
 * Write a predicate function that returns true if any value in vector is missing. Use this function to find columns with missing values in the `daily` column. Create a plot or table that shows how often patterns of missingness occur: are all of the missing values in the same rows or are the various columns missing data in different ways?
+
+No, the missing values are not all in the same rows. They are only in some columns for the lower rows. 
 
 ```{r}
 has_any_na <- function(x) any(is.na(x))
@@ -259,19 +267,46 @@ ggplot(missing_data_long, aes(x = column, y = row, fill = missing)) +
 
 ### Task 6
 
-Shaurya
 
 * Limit the `gas` table to days where the price exceeded the yearly median. Use the concept of [circular means](https://en.wikipedia.org/wiki/Circular_mean) to compute the average day of the year when price exceeds the yearly median price. The `yday` function will likely be useful here. 
 
 ```{r}
+circular_mean_day <- function(days, n_days = 365) {
+  days <- days[!is.na(days)]
+  if (length(days) == 0) return(NA_real_)
+  
+  angles <- days * 2 * pi / n_days
+  mean_angle <- atan2(mean(sin(angles)), mean(cos(angles)))
+  if (mean_angle < 0) mean_angle <- mean_angle + 2*pi
+  
+  mean_day <- mean_angle * n_days / (2*pi)
+  return(mean_day)
+}
 
+# Clean and filter data
+gas_filtered <- gas %>%
+  filter(!is.na(Date), !is.na(Price)) %>%
+  mutate(
+    year = year(Date),
+    day_of_year = yday(Date)
+  ) %>%
+  group_by(year) %>%
+  mutate(yearly_median = median(Price, na.rm = TRUE)) %>%
+  filter(Price > yearly_median)
+
+# Calculate circular mean per year
+circular_means <- gas_filtered %>%
+  group_by(year) %>%
+  summarise(average_day = circular_mean_day(day_of_year))
+
+# Display results
+circular_means
 
 ```
 
 
 ### Task 7
 
-Shaurya
 
 * Using the cut function, create two nominal variables from quantitative data in the `daily` dataset. Use these groups to summarize the data. Use arrange to show the smallest or largest values in these comparisons.
 
@@ -316,7 +351,7 @@ print(summary_power)
 
 ### Task 8
 
-Shaurya
+
 
 * There are several variables that pull out data by different industry (the `_idx` columns). Create a table for these columns using `select` and the `ends_with` function. Provide two different plots that show of the relations between these variables (you do not need to have all variables in each plot).
 
@@ -380,15 +415,16 @@ daily %>%
   ggplot(aes(x = consumption_power)) +
   geom_density()
 ```
-From the marginal distribution of the consumption power variable, we can see that the distribution is right-skewed. This means that the majority of the data points are concentrated on the lower end of the consumption power scale, and there are few values that are very high. This is likely due to the fact that there are a few outliers in the data that are driving the mean up. 
+From the marginal distribution of the consumption power variable, we can see that the distribution is right-skewed. This means that the majority of the data points are concentrated on the lower end of the consumption power scale, and there are few values that are very high. This is likely due to the fact that there are a few outliers in the data that are driving the mean up, meaning the mean is a less accurate predictor than the median for consumption of power. 
 
 ```{r}
 # Joint distribution
 daily %>%
   ggplot(aes(x = temperature, y = consumption_power)) +
-  geom_point()
+  geom_point() +
+  geom_smooth()
 ```
-From the joint distibution of the consumption power and temperature, we can see that there is a negative correlation between the two variables. This means that as the temperature increases, the consumption power decreases. This is likely due to the fact that people use less electricity when it is warmer outside, and this maybe means that people do not use their power for air conditioning (or siply do not have air conditioning).
+From the joint distibution of the consumption power and temperature above, we can see that there is a negative correlation between the two variables. This means that as the temperature increases, the consumption power decreases. This is likely due to the fact that people use less electricity when it is warmer outside, and this maybe means that people do not use their power for air conditioning (or siply do not have air conditioning). However, this correlaton does not appear to be linear, and the variance about the line of best fit is quite large.
 
 ```{r}
 # Conditional mean
@@ -407,10 +443,10 @@ daily %>%
   geom_boxplot() +
 facet_wrap(~christmas_period, labeller = label_both)
 ```
-This plots above display the box-plot distibutions of consumption power according to if there is a christmas period or not. From the facet wrap plot, we can see that the median consumption power of data points is lower during the Christmas period than during the rest of the year. This is likely due to the fact that people are away from home during the Christmas period, so they use less electricity. 
+This plots above display the box-plot distibutions of consumption power according to if there is a christmas period or not. From the facet wrap plot, we can see that the median consumption power of data points is lower during the Christmas period than during the rest of the year. This is likely due to the fact that people are away from home during the Christmas period, so they use less electricity. We can also see that the variance for if there is a christmas period is larger than if there is not a christmas period, which is likely due to the fact that there are more data points in the dataset that are not during the christmas period.
 
 ```{r}
-# A plot that shows seasonal effects before the crisis (September 2021 until October 2022)
+# A plot that shows seasonal effects during the crisis (September 2021 until October 2022)
 
 daily %>%
   filter(date > "2021-09-01") %>%
@@ -422,12 +458,10 @@ coord_polar()
   
 
 ```
-The above polar coordinate plot shows how the mean power, by month, differed in the dataset. From the plot of the seasonal effects on the consumption power before the crisis, it is clear that the consumption power is, on average, highest in the winter months and lowest in the summer months. This is obvios from the plot due to the lenggths of plot lines within each month being longest for months 11, 12, and 1 This is likely due to the increased use of heating in the winter months and the decreased use of heating in the summer months. This is a common trend in many countries, as people tend to use more electricity for heating during the winter months and less electricity for cooling during the summer months. 
+The above polar coordinate plot shows how the mean consumption power, by month, differed in the dataset during the crisis. From the plot of the seasonal effects on the consumption power during the crisis, it is clear that the consumption power is, on average, highest in the winter months and lowest in the summer months. This is obvious from the plot due to the lengths of plot lines within each month being longest for months 11, 12, and 1 This is likely due to the increased use of heating in the winter months and the decreased use of heating in the summer months. This is a common trend in many countries, as people tend to use more electricity for heating during the winter months and less electricity for cooling during the summer months. 
 
 
 ### Objective 2
-
-Shaurya
 
 * Compare and contrast holidays and non-holidays for household energy consumption. Select 3 ways of comparing these groups. Provide at least one graph.
 
@@ -478,7 +512,6 @@ The shape of the density plot differs between the holiday and non-holiday period
 
 ### Objective 3
 
-Shaurya
 
 * According to the paper, the gas crisis occurred between September 2021 until October 2022. Compare this period with the periods before and after on household and industrial consumption. Write a paragraph explaining your findings.
 
@@ -549,8 +582,6 @@ In the box plot, we can see that there was a slight drop in energy consumption f
 
 ### Objective 4
 
-Shaurya
-
 * Explore the [documentation for ggplot](https://ggplot2.tidyverse.org/). Select one geometery and one `stat_` function we have not used before or use an option to a previously used geometry/stat with a new option. Write a short paragraph explaining what the plots show. 
 
 ```{r}
@@ -574,8 +605,6 @@ For mid-range consumption (roughly 0.75 to 1.75 units), the holiday ECDF curve i
 
 ### Objective 4
 
-Hania
-
 * Investigate solar radiation's marginal distribution and also it's relationship with temperature.
 
 ```{r}
@@ -597,38 +626,36 @@ The above plots show the marginal distribution of solar radiation from the data 
 
 ### Objective 5
 
-Hania
-
 * Use `group_by` to summarize by a new feature of this data set not otherwise discussed in the tasks or objectives. What have you learned with these investigation?
-q: make a faceted plot of the standard deviations of the `wages` variable by the `holiday` variable. 
 
 
 ```{r}
 daily %>% 
-  group_by(holiday) %>% 
-  summarise(mean_hosp = mean(hospitality_idx)) %>% 
-  ggplot(aes(x = weekday, y = mean_hosp)) + 
-  geom_point() +
-  facet_wrap(~holiday, labeller = label_both)
+mutate(crisis = case_when(date < "2021-09-01" ~ "before", date >= "2021-09-01" & date <= "2022-10-31" ~ "during", date > "2022-10-31" ~ "after")) %>% 
+  group_by(crisis) %>% 
+  ggplot(aes(y = hospitality_idx)) + 
+  geom_boxplot() +
+  facet_wrap(~crisis, labeller = label_both)
 ```
+
+In the above plot, it shoes the ditribution, median, and quartiles (via boxplots) of the hospitality index from the dataset from time beriods before, after, and during the crisis. From the plot, we can see that the median hospitality index is highest during the crisis, which is likely due to the fact that people were staying home more often during the crisis. This is supported by the fact that the median hospitality index is lowest before the crisis, which is likely due to the fact that people were going out more often before the crisis. Additionally, we can see that the variance of the hospitality index is largest during the crisis, which is likely due to the fact that there are more data points in the dataset during the crisis than before or after the crisis.
+
 
 ### Objective 6
 
 
 * Based on your exploration of the data, suggest three questions that could be asked from these data or additional data that you can imagine. Be sure to explain why the previous plots or calculations indicates that this would be an interesting our useful exploration.
 
-One question I could ask based on my exploration of the data is how the consumption power changes over time throughout the data. From the plots I have created, I can see that the consumption power is highest in the winter months and lowest in the summer months. This is likely due to the increased use of heating in the summer months. However, I am curious how this changed over the course of history in this dataset, and how the range of the solar radiation in certain months affects it. Perhaps I could group by year or even 10-day intervals and see how the time frame affected the average solar radiation within that timeframe over time. Another question I could ask is how the consumption power changes with the temperature throughout different months. From the joint distribution of the consumption power and temperature, I can see that there is a negative correlation between the two variables. This means that as the temperature increases, the consumption power decreases. However, I could investigate how this relationship varies according the month, which could indicate stronger relationships in some months over others. Finally, I could ask how the consumption power changes with the solar radiation according to a holiday or not. From the joint distribution of the consumption power and solar radiation, I can see that there is a positive correlation between the two variables. This means that as the solar radiation increases, the consumption power also increases. So, a question I could ask is the exact amount by which on average solar radiation differs by month, so as to see if the relationship is weaker or stronger in some months moreso than others.
+One question I could ask based on my exploration of the data is how the consumption power changes over time throughout the data. From the plots I have created, I can see that the consumption power is highest in the winter months and lowest in the summer months. This is likely due to the increased use of heating in the summer months, but I am curious how closely the patter repeats every year and how much it deviates. Specifically, I am curious how this changed over the course of history in this dataset (before vs during vs after the crisis), and how the range of the solar radiation in certain months affects it. Perhaps I could group by year or even 10-day intervals and see how the time frame affected the average solar radiation within that timeframe over time. Another question I could ask is how the consumption power changes with the temperature throughout different months. From the joint distribution of the consumption power and temperature, I can see that there is a negative correlation between the two variables. This means that as the temperature increases, the consumption power decreases. However, I could investigate how this relationship varies according the month, which could indicate stronger relationships in some months over others, which seems like a better investigation than just judging the plot itself. Finally, I could ask how the consumption power changes with the solar radiation according to a holiday or not. From the joint distribution of the consumption power and solar radiation, I can see that there is a positive correlation between the two variables. This means that as the solar radiation increases, the consumption power also increases. So, a question I could ask is the exact amount by which on average solar radiation differs by month or if there is a holiday, so as to see if the relationship is weaker or stronger in some months or holidays moreso than others.
 
 
 ### Objective 7
 
-Hania
 
 * Write an abstract for your project. Briefly explain what you did, what you found, and why a potential reader should be interested in your research.
 
 
-In our project, we began by analyzing the dimesions of the "daily" and "gas" datasets. We then summarized the data by calculating the mean, standard deviation, minimum, median, and maximum values for the three types of natural gas consumption. We analyzed further the number of weeks covered, the percentage change in consumption variables, and the proportion of holidays. We created plots to visualize the trends in natural gas prices and consumption over time during the crisis, and we explored missing values in the dataset. We fulfilled the objectives of this project by looking at how exactly the usage of power or heating varied with the holiday season during the crisis, months, and temperature. In our exploration of the consumption power as it varies with the months in a year, we found that consumption power is highest in the winter months by a significant margin, which contridicts our result of its mean being lower during the christmas period than when it is not christmas. Additionally, we confirmed that temperature has a negative correlative relationship with consumption power, implying causation supported by our conclusions from the seasonal data. Interestingly enough, we also found that heating indexes are lowest on weekends on average. First, we looked at  investigated solar radiation's marginal distribution and its relationship with temperature. Our findings indicate that there are significant differences in natural gas consumption patterns based on various factors such as temperature and the month. This research is important as it provides insights into energy consumption trends during a crisis period and can inform future energy policies.
-
+In our project, we began by analyzing the dimesions of the "daily" and "gas" datasets. We then summarized the data by calculating the mean, standard deviation, minimum, median, and maximum values for the three types of natural gas consumption. We analyzed further the number of weeks covered, the percentage change in consumption variables, and the proportion of holidays. We created plots to visualize the trends in natural gas prices and consumption over time during the crisis, and we explored missing values in the dataset. We fulfilled the objectives of this project by looking at how exactly the usage of power or heating varied with the holiday season, months, and temperature during the crisis. In our exploration of the consumption power as it varies with the months in a year, we found that consumption power is highest in the winter months by a significant margin, which contridicts our result of its mean being lower during the christmas period than when it is not christmas. However, we also found higher consumption values are less common on holidays compared to non-holidays, and that there appear to be less data taken on holidays, introducing an area of bias. Additionally, we confirmed that temperature has a negative correlative relationship with consumption power, implying causation supported by our conclusions from the seasonal data showing a repeating pattern of consumption. Interestingly enough, we also found that heating indexes are lowest on weekends on average in the data. We also investigated solar radiation's marginal distribution and its relationship with temperature, finding that there are high values that skew its dirtibution to the right. Our findings indicate that there are significant differences in natural gas consumption patterns based on various factors such as temperature, the month, and the holiday season. Our findings also show shortcomings in the data, such as missing or inconsistent values. This research is important as it provides insights into energy consumption trends during a crisis period and can inform future energy policies, or how best to accomodate the enviornment and the population during such crises.
 
 
 
