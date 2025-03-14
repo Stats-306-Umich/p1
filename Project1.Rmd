@@ -263,6 +263,11 @@ Shaurya
 
 * Limit the `gas` table to days where the price exceeded the yearly median. Use the concept of [circular means](https://en.wikipedia.org/wiki/Circular_mean) to compute the average day of the year when price exceeds the yearly median price. The `yday` function will likely be useful here. 
 
+```{r}
+
+
+```
+
 
 ### Task 7
 
@@ -270,11 +275,89 @@ Shaurya
 
 * Using the cut function, create two nominal variables from quantitative data in the `daily` dataset. Use these groups to summarize the data. Use arrange to show the smallest or largest values in these comparisons.
 
+```{r}
+# Create nominal variables from continuous data using quartile-based breaks
+daily <- daily %>%
+  mutate(
+    small_cat = cut(consumption_small,
+                    breaks = quantile(consumption_small, probs = seq(0, 1, by = 0.25), na.rm = TRUE),
+                    include.lowest = TRUE,
+                    labels = c("Low", "Medium-Low", "Medium-High", "High")),
+    power_cat = cut(consumption_power,
+                    breaks = quantile(consumption_power, probs = seq(0, 1, by = 0.25), na.rm = TRUE),
+                    include.lowest = TRUE,
+                    labels = c("Low", "Medium-Low", "Medium-High", "High"))
+  )
+
+# Summarize consumption_small by the new 'small_cat' groups
+summary_small <- daily %>%
+  group_by(small_cat) %>%
+  summarise(
+    count = n(),
+    avg_small = mean(consumption_small, na.rm = TRUE)
+  ) %>%
+  arrange(avg_small)  # Arranged by increasing average consumption
+
+# Summarize consumption_power by the new 'power_cat' groups
+summary_power <- daily %>%
+  group_by(power_cat) %>%
+  summarise(
+    count = n(),
+    avg_power = mean(consumption_power, na.rm = TRUE)
+  ) %>%
+  arrange(desc(avg_power))  # Arranged by decreasing average consumption
+
+# Display the summaries
+print(summary_small)
+print(summary_power)
+
+
+```
+
 ### Task 8
 
 Shaurya
 
 * There are several variables that pull out data by different industry (the `_idx` columns). Create a table for these columns using `select` and the `ends_with` function. Provide two different plots that show of the relations between these variables (you do not need to have all variables in each plot).
+
+```{r}
+# 1. Create a table containing only the _idx columns
+idx_table <- daily %>% select(ends_with("_idx"))
+print(idx_table)
+
+plot_data <- daily %>%
+  mutate(Year = lubridate::year(date)) %>%
+  filter(!is.na(manufacturing_idx), !is.na(retail_idx))
+
+ggplot(plot_data, aes(x = manufacturing_idx, y = retail_idx)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  facet_wrap(~Year) +
+  labs(
+    title = "Manufacturing vs. Retail Index Faceted by Year",
+    x = "Manufacturing Index",
+    y = "Retail Index"
+  ) +
+  theme_minimal()
+
+# 3. Plot 2: Time Series Comparison for All _idx Columns
+# Reshape and remove missing values
+daily_idx_long <- daily %>% 
+  select(date, ends_with("_idx")) %>%
+  pivot_longer(cols = ends_with("_idx"), names_to = "Index_Type", values_to = "Value") %>%
+  filter(!is.na(Value))
+
+time_series_plot <- ggplot(daily_idx_long, aes(x = date, y = Value, color = Index_Type)) +
+  geom_line() +
+  labs(
+    title = "Time Series of Price Indices",
+    x = "Date",
+    y = "Index Value"
+  ) +
+  theme_minimal()
+print(time_series_plot)
+
+```
 
 
 ## Objectives
@@ -348,6 +431,51 @@ Shaurya
 
 * Compare and contrast holidays and non-holidays for household energy consumption. Select 3 ways of comparing these groups. Provide at least one graph.
 
+```{r}
+library(tidyverse)
+library(lubridate)
+
+# 1. Compute summary statistics by holiday vs. non-holiday
+summary_stats <- daily %>%
+  group_by(holiday) %>%
+  summarise(
+    count = n(),
+    mean_consumption = mean(consumption_small, na.rm = TRUE),
+    median_consumption = median(consumption_small, na.rm = TRUE),
+    sd_consumption = sd(consumption_small, na.rm = TRUE)
+  )
+print(summary_stats)
+
+# 2. Boxplot to compare household consumption (consumption_small) by holiday status
+boxplot_consumption <- ggplot(daily, aes(x = factor(holiday, labels = c("Non-Holiday", "Holiday")), y = consumption_small)) +
+  geom_boxplot(fill = c("lightblue", "salmon")) +
+  labs(
+    title = "Household Energy Consumption on Holidays vs. Non-Holidays",
+    x = "Holiday Status",
+    y = "Consumption (small consumers)"
+  ) +
+  theme_minimal()
+print(boxplot_consumption)
+
+# 3. Density plot to compare the distributions
+density_plot <- ggplot(daily, aes(x = consumption_small, fill = factor(holiday, labels = c("Non-Holiday", "Holiday")))) +
+  geom_density(alpha = 0.5) +
+  labs(
+    title = "Density Plot of Household Energy Consumption",
+    x = "Consumption (small consumers)",
+    fill = "Holiday Status"
+  ) +
+  theme_minimal()
+print(density_plot)
+
+```
+
+Through the summary statistics, we can see that we have collected less data on household electricity consumption during holidays. This suggests that the data might have some biases. The summary statistics provide a numerical snapshot to compare the two groups, and we can see that the mean consumption, median consumption, and standard deviation are all lower during holidays.
+
+The boxplot gives us a better summary of the data's spread. We observe that even though the medians are nearly identical, the IQR for consumption during non-holidays is larger than during holidays. Furthermore, the non-holiday data has more outliers, which might be due to having more data from non-holiday periods.
+
+The shape of the density plot differs between the holiday and non-holiday periods, indicating distinct usage patterns. While both distributions share a primary peak at roughly the same value, the second peak is smaller during the holiday period. This suggests that higher consumption values are less common on holidays compared to non-holidays.
+
 ### Objective 3
 
 Shaurya
@@ -355,11 +483,94 @@ Shaurya
 * According to the paper, the gas crisis occurred between September 2021 until October 2022. Compare this period with the periods before and after on household and industrial consumption. Write a paragraph explaining your findings.
 
 
+```{r}
+crisis_start <- as.Date("2021-09-01")
+crisis_end <- as.Date("2022-10-31")
+
+# Categorize time periods
+daily <- daily %>%
+  mutate(period = case_when(
+    date < crisis_start ~ "Before Crisis",
+    date >= crisis_start & date <= crisis_end ~ "During Crisis",
+    date > crisis_end ~ "After Crisis"
+  ))
+
+# Compute summary statistics for household and industrial consumption
+summary_stats <- daily %>%
+  group_by(period) %>%
+  summarise(
+    mean_household = mean(consumption_small, na.rm = TRUE),
+    median_household = median(consumption_small, na.rm = TRUE),
+    sd_household = sd(consumption_small, na.rm = TRUE),
+    mean_industry = mean(consumption_industry, na.rm = TRUE),
+    median_industry = median(consumption_industry, na.rm = TRUE),
+    sd_industry = sd(consumption_industry, na.rm = TRUE)
+  )
+print(summary_stats)
+
+
+
+```
+
+```{r}
+daily_long <- daily %>%
+  select(date, period, consumption_small, consumption_industry) %>%
+  pivot_longer(
+    cols = starts_with("consumption_"),
+    names_to = "consumption_type",
+    values_to = "consumption"
+  ) %>%
+  # Make the consumption_type names a bit prettier for plots
+  mutate(consumption_type = recode(consumption_type,
+                                   "consumption_small" = "Household",
+                                   "consumption_industry" = "Industrial"))
+
+# 1. Box Plot Comparison by Period
+boxplot_consumption <- ggplot(daily_long, aes(x = period, y = consumption, fill = period)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 21, outlier.color = "black") +
+  facet_wrap(~ consumption_type, scales = "free_y") +
+  labs(
+    title = "Household and Industrial Consumption by Period",
+    x = "Period",
+    y = "Consumption"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+print(boxplot_consumption)
+
+
+```
+
+
+In the box plot, we can see that there was a slight drop in energy consumption for both households and industries during the crisis. However, after the crisis, household electricity consumption increased significantly, whereas industrial energy consumption remained largely unchanged. Interestingly, for households, the 25th and 75th percentiles of electricity usage were nearly identical before and during the crisis, and both increased sharply after the crisis.
+
 ### Objective 4
 
 Shaurya
 
 * Explore the [documentation for ggplot](https://ggplot2.tidyverse.org/). Select one geometery and one `stat_` function we have not used before or use an option to a previously used geometry/stat with a new option. Write a short paragraph explaining what the plots show. 
+
+```{r}
+ggplot(daily, aes(x = consumption_small, color = factor(holiday, labels = c("Non-Holiday", "Holiday")))) +
+  stat_ecdf(size = 1) +
+  labs(
+    title = "Empirical Cumulative Distribution of Household Consumption",
+    subtitle = "Comparing Holidays vs. Non-Holidays",
+    x = "Household Consumption",
+    y = "Proportion of Observations",
+    color = "Holiday Status"
+  ) +
+  theme_minimal(base_size = 13)
+
+
+```
+
+
+For mid-range consumption (roughly 0.75 to 1.75 units), the holiday ECDF curve is shifted to the left of the non-holiday curve. This means that for any given percentile, the consumption level on holidays is lower than that on non-holidays. Equivalently, at a fixed consumption level within this range, a higher proportion of holiday days fall below that level compared to non-holiday days. In other words, holidays tend to have lower consumption values than non-holidays in this mid-range.
+
 
 ### Objective 4
 
